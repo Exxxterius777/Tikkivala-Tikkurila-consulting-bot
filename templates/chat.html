@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Консультант Tikkivala</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 720px;
+        margin: 30px auto;
+        padding: 15px;
+        background: #f2f2f2;
+    }
+    h1 { color: #2c3e50; }
+    #chat {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        height: 480px;
+        overflow-y: auto;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .msg {
+        margin: 8px 0;
+        padding: 10px 14px;
+        border-radius: 14px;
+        max-width: 80%;
+        white-space: pre-wrap;
+        line-height: 1.4;
+    }
+    .user { background: #F08080; color: #222; margin-left: auto; }
+    .bot  { background: #DCDCDC; color: #222; }
+    .link-btn {
+        display: inline-block;
+        margin: 10px 0;
+        padding: 10px 16px;
+        background: #FC3F1D;
+        color: white !important;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 15px;
+    }
+    .link-btn:hover { background: #E2351A; }
+    .map-widget {
+        display: block;
+        margin: 10px 0;
+        border-radius: 10px;
+        border: 1px solid #ccc;
+        max-width: 100%;
+    }
+    #row { display: flex; gap: 8px; margin-top: 15px; }
+    #inp {
+        flex: 1;
+        padding: 12px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 15px;
+    }
+    #btn {
+        padding: 12px 24px;
+        background: #28a745;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 15px;
+    }
+    #btn:hover { background: #218838; }
+    #btn:disabled { background: #999; cursor: not-allowed; }
+    #typing {
+        display: none;
+        color: #888;
+        font-style: italic;
+        padding: 6px 14px;
+        font-size: 14px;
+    }
+    #typing.active { display: block; }
+</style>
+</head>
+<body>
+    <h1>🎨 Консультант Tikkivala</h1>
+    <div id="chat">
+        <div class="msg bot">Я бот-консультант Тиккивала. Доброго времени суток. Что будете красить?</div>
+        <div class="msg bot">Могу подсказать, как правильно красить разные поверхности, помочь с подбором ассортимента под вашу задачу или рассчитать площадь окрашиваемой поверхности. Напишите, что вас интересует.</div>
+    </div>
+    <div id="typing">Бот печатает...</div>
+    <div id="row">
+        <input id="inp" placeholder="Напишите сообщение..." autocomplete="off">
+        <button id="btn" onclick="send()">Отправить</button>
+    </div>
+
+<script>
+    // Состояние бота хранится в localStorage — не зависит от сессии Flask
+    let botStage = localStorage.getItem('bot_stage') || 'start';
+    let botContext = JSON.parse(localStorage.getItem('bot_context') || '{}');
+
+    function addMessage(text, who) {
+        const chat = document.getElementById('chat');
+        const div = document.createElement('div');
+        div.className = 'msg ' + who;
+        div.textContent = text;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addLink(url) {
+        const chat = document.getElementById('chat');
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'link-btn';
+        a.textContent = '🗺️ Открыть Яндекс.Карты';
+        chat.appendChild(a);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addMap(url) {
+        const chat = document.getElementById('chat');
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.className = 'map-widget';
+        iframe.width = '100%';
+        iframe.height = '250';
+        iframe.frameBorder = '0';
+        iframe.loading = 'lazy';
+        chat.appendChild(iframe);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function send() {
+        const inp = document.getElementById('inp');
+        const btn = document.getElementById('btn');
+        const typing = document.getElementById('typing');
+        const text = inp.value.trim();
+        if (!text) return;
+
+        addMessage(text, 'user');
+        inp.value = '';
+        btn.disabled = true;
+        typing.classList.add('active');
+
+        try {
+            const r = await fetch('/api/message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: text,
+                    stage: botStage,
+                    context: botContext,
+                }),
+            });
+            const data = await r.json();
+
+            // Обновляем состояние из ответа сервера
+            botStage = data.stage || 'start';
+            botContext = data.context || {};
+            localStorage.setItem('bot_stage', botStage);
+            localStorage.setItem('bot_context', JSON.stringify(botContext));
+
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            typing.classList.remove('active');
+            addMessage(data.reply, 'bot');
+            if (data.link) addLink(data.link);
+            if (data.map_url) addMap(data.map_url);
+        } catch (e) {
+            typing.classList.remove('active');
+            addMessage('Ошибка соединения с сервером.', 'bot');
+            console.error(e);
+        } finally {
+            btn.disabled = false;
+            inp.focus();
+        }
+    }
+
+    document.getElementById('inp').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') send();
+    });
+</script>
+</body>
+</html>
